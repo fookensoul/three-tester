@@ -253,7 +253,7 @@ export class SceneComponent implements OnInit {
 
       let currentRot = this.cubeGroupAll.rotation.toVector3();
       this.cubeGroupAll.rotation.set(0, 0, 0);
-      
+    
       for (let i = group.children.length - 1; i >= 0; i--) {
         let cClone = group.children[i].clone(true) as ColorCube;
         group.remove(group.children[i]);
