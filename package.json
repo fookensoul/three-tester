@@ -21,8 +21,14 @@
     "@angular/platform-browser": "^4.2.4",
     "@angular/platform-browser-dynamic": "^4.2.4",
     "@angular/router": "^4.2.4",
+    "@types/lodash": "^4.14.78",
+    "@types/three": "^0.84.27",
+    "bootstrap": "4.0.0-alpha.6",
     "core-js": "^2.4.1",
+    "ngx-model": "^3.1.0",
     "rxjs": "^5.4.2",
+    "tether": "^1.4.0",
+    "three": "^0.87.1",
     "zone.js": "^0.8.14"
   },
   "devDependencies": {
