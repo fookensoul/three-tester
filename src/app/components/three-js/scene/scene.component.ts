@@ -4,7 +4,9 @@ import { ThreeScene } from '../../../services/three-js/three-scene';
 import { ThreeModelFactory } from '../../../services/three-js/three-model-factory';
 import { CameraOptions } from '../../../models/three-js/camera-options';
 import { RendererOptions } from '../../../models/three-js/renderer-options';
-import { ColorCube, TOP, BOTTOM, LEFT, RIGHT, BACK, FRONT } from '../../../models/three-js/color-cube';
+import ColorCube from '../../../models/three-js/color-cube';
+import ColorCubeComponent from '../../../models/three-js/color-cube-component';
+import * as Constants from '../../../models/three-js/color-cube-constants';
 import * as THREE from 'three';
 import * as _ from 'lodash';
 
@@ -23,7 +25,7 @@ export class SceneComponent implements OnInit {
   rendererOptionsSubscription: Subscription;
 
   cubeSize: number = 10;
-  cube: THREE.Mesh[];
+  colorCube: ColorCube;
   cubeGroupAll: THREE.Object3D;
   cubeHistory: THREE.Object3D[];
 
@@ -35,7 +37,6 @@ export class SceneComponent implements OnInit {
   orangePhongMaterial: THREE.MeshPhongMaterial;
   bluePhongMaterial: THREE.MeshPhongMaterial;
   greenPhongMaterial: THREE.MeshPhongMaterial;
-  defaultMaterials: THREE.MeshPhongMaterial[];
 
   previousMouseX: number = 0;
   previousMouseY: number = 0;
@@ -50,8 +51,7 @@ export class SceneComponent implements OnInit {
     this.bluePhongMaterial = new THREE.MeshPhongMaterial({ map: this.textureLoader.load('../../../../assets/images/cube_blue_100x100_5pxIn.png') });
     this.greenPhongMaterial = new THREE.MeshPhongMaterial({ map: this.textureLoader.load('../../../../assets/images/cube_green_100x100_5pxIn.png') });
 
-
-
+    this.colorCube = new ColorCube(this.cubeSize);
     this.cubeHistory = new Array<THREE.Object3D>();
   }
 
@@ -63,7 +63,7 @@ export class SceneComponent implements OnInit {
       { x: -20, y: 25, z: 100 },
       new THREE.Vector3(0, 0, 0)
     );
-    this.rendererOptions = new RendererOptions(0xffffff, { width: 800, height: 600 });
+    this.rendererOptions = new RendererOptions(0xcccccc, { width: 800, height: 600 });
 
     this.container = this.containerRef.nativeElement;
     this.container.appendChild(this.threeScene.getRenderer().domElement);
@@ -75,59 +75,121 @@ export class SceneComponent implements OnInit {
   }
 
   initGeometry() {
-    const geometry = new THREE.BoxGeometry(this.cubeSize, this.cubeSize, this.cubeSize);
-    this.cubeGroupAll = new THREE.Object3D();
-
-    for (var x = -this.cubeSize; x <= -this.cubeSize; x += this.cubeSize) {
-      for (var y = 0; y <= this.cubeSize; y += this.cubeSize) {
-        for (var z = this.cubeSize; z <= this.cubeSize; z += this.cubeSize) {
-          this.defaultMaterials = [this.blackPhongMaterial, this.blackPhongMaterial, this.blackPhongMaterial, this.blackPhongMaterial, this.blackPhongMaterial, this.blackPhongMaterial];
-
-          const rCube = new ColorCube(geometry, this.defaultMaterials);
-          this.cubeGroupAll.add(rCube);
-          rCube.position.set(x, y, z);
-
-          if (x == -this.cubeSize) {
-            rCube.setSideMaterial(LEFT, this.redPhongMaterial);
-            rCube.name += 'Red';
-          } 
-          else if (x == this.cubeSize) {
-            rCube.material[RIGHT] = this.orangePhongMaterial;
-            rCube.name += 'Orange';
-          } else {
-          }
-
-          if (y == -this.cubeSize) {
-            rCube.setSideMaterial(BOTTOM, this.yellowPhongMaterial);
-            rCube.name += 'Yellow';
-          } else if (y == this.cubeSize) {
-            rCube.setSideMaterial(TOP, this.whitePhongMaterial);
-            rCube.name += 'White';
-          } else {
-          }
-
-          if (z == -this.cubeSize) {
-            rCube.setSideMaterial(BACK, this.bluePhongMaterial);
-            rCube.name += 'Blue';
-          } else if (z == this.cubeSize) {
-            rCube.setSideMaterial(FRONT, this.greenPhongMaterial);
-            rCube.name += 'Green';
-          } else {
-
-          }
-        }
-      }
-    }
+    this.setSceneGeometryFromColorCube(this.colorCube);
     this.threeScene.addToScene(this.cubeGroupAll);
     this.threeScene.render(() => {
       this.renderFunc();
     });
   }
 
+  setSceneGeometryFromColorCube(colorCube: ColorCube) {
+    let currentRotation = new THREE.Vector3(0, 0, 0);
+    if (this.cubeGroupAll) {
+      currentRotation = this.cubeGroupAll.rotation.toVector3();
+      this.threeScene.removeFromScene(this.cubeGroupAll);
+    }
+    this.cubeGroupAll = new THREE.Object3D();
+    let cubeComponents = colorCube.getCubeComponents();
+    cubeComponents.forEach(c => {
+      let materials = [this.blackPhongMaterial, this.blackPhongMaterial, this.blackPhongMaterial, this.blackPhongMaterial, this.blackPhongMaterial, this.blackPhongMaterial];
+      const cube = new THREE.BoxGeometry(colorCube.componentSize, colorCube.componentSize, colorCube.componentSize);
+      materials[Constants.TOP] = this.getMaterial(c.faceColors.top);
+      materials[Constants.BOTTOM] = this.getMaterial(c.faceColors.bottom);
+      materials[Constants.LEFT] = this.getMaterial(c.faceColors.left);
+      materials[Constants.RIGHT] = this.getMaterial(c.faceColors.right);
+      materials[Constants.FRONT] = this.getMaterial(c.faceColors.front);
+      materials[Constants.BACK] = this.getMaterial(c.faceColors.back);
+      const mesh = new THREE.Mesh(cube, materials);
+      mesh.position.set(c.getPosition().x, c.getPosition().y, c.getPosition().z);
+      this.cubeGroupAll.add(mesh);
+    });
+
+    this.threeScene.addToScene(this.cubeGroupAll);
+    this.cubeGroupAll.rotation.setFromVector3(currentRotation);
+  }
+
   renderFunc() {
     //this.threeScene.rotateOnWorldAxisX(this.cubeGroupAll, 1);
   }
 
+  rotateSlice(slice: string, positiveRadians: boolean) {
+    let currentRotation = this.cubeGroupAll.rotation.toVector3();
+    let sliceGroup = new THREE.Object3D();
+    this.cubeGroupAll.rotation.set(0, 0, 0);
+    let positiveTarget = this.cubeSize;
+    let negativeTarget = -this.cubeSize;
+
+    for (let i = this.cubeGroupAll.children.length - 1; i >= 0; i--) {
+      let cClone = this.cubeGroupAll.children[i].clone(true);
+      let position = cClone.position.round();
+
+      if ((slice == Constants.XSLICE_LEFT && position.x == negativeTarget) ||
+        (slice == Constants.XSLICE_RIGHT && position.x == positiveTarget) ||
+        (slice == Constants.YSLICE_TOP && position.y == positiveTarget) ||
+        (slice == Constants.YSLICE_BOTTOM && position.y == negativeTarget) ||
+        (slice == Constants.ZSLICE_FRONT && position.z == positiveTarget) ||
+        (slice == Constants.ZSLICE_BACK && position.z == negativeTarget)) {
+        sliceGroup.add(cClone);
+        this.cubeGroupAll.remove(this.cubeGroupAll.children[i]);
+      }
+    }
+    this.cubeGroupAll.add(sliceGroup);
+    this.cubeGroupAll.rotation.setFromVector3(currentRotation);
+
+    if (slice == Constants.XSLICE_LEFT) {
+      this.threeScene.rotateOnWorldAxisX(sliceGroup, positiveRadians ? 90 : -90, .75, false, () => {
+        this.colorCube.rotateSlice(slice, positiveRadians);
+        this.setSceneGeometryFromColorCube(this.colorCube);
+      });
+    } else if (slice == Constants.XSLICE_RIGHT) {
+      this.threeScene.rotateOnWorldAxisX(sliceGroup, positiveRadians ? -90 : 90, .75, false, () => {
+        this.colorCube.rotateSlice(slice, positiveRadians);
+        this.setSceneGeometryFromColorCube(this.colorCube);
+      });
+
+    } else if (slice == Constants.YSLICE_TOP) {
+      this.threeScene.rotateOnWorldAxisY(sliceGroup, positiveRadians ? -90 : 90, .75, false, () => {
+        this.colorCube.rotateSlice(slice, positiveRadians);
+        this.setSceneGeometryFromColorCube(this.colorCube);
+      });
+    } else if (slice == Constants.YSLICE_BOTTOM) {
+      this.threeScene.rotateOnWorldAxisY(sliceGroup, positiveRadians ? 90 : -90, .75, false, () => {
+        this.colorCube.rotateSlice(slice, positiveRadians);
+        this.setSceneGeometryFromColorCube(this.colorCube);
+      });
+    } else if (slice == Constants.ZSLICE_FRONT) {
+      this.threeScene.rotateOnWorldAxisZ(sliceGroup, positiveRadians ? -90 : 90, .75, false, () => {
+        this.colorCube.rotateSlice(slice, positiveRadians);
+        this.setSceneGeometryFromColorCube(this.colorCube);
+      });
+    } else if (slice == Constants.ZSLICE_BACK) {
+      this.threeScene.rotateOnWorldAxisZ(sliceGroup, positiveRadians ? 90 : -90, .75, false, () => {
+        this.colorCube.rotateSlice(slice, positiveRadians);
+        this.setSceneGeometryFromColorCube(this.colorCube);
+      });
+    }
+  }
+
+  getMaterial(color: string): THREE.MeshPhongMaterial {
+    switch (color) {
+      case Constants.BLACK:
+        return this.blackPhongMaterial;
+      case Constants.WHITE:
+        return this.whitePhongMaterial;
+      case Constants.YELLOW:
+        return this.yellowPhongMaterial;
+      case Constants.RED:
+        return this.redPhongMaterial;
+      case Constants.ORANGE:
+        return this.orangePhongMaterial;
+      case Constants.BLUE:
+        return this.bluePhongMaterial;
+      case Constants.GREEN:
+        return this.greenPhongMaterial;
+      default:
+        return undefined;
+    }
+  }
 
   initListeners() {
     // window.addEventListener('resize', (e) => {
@@ -136,244 +198,94 @@ export class SceneComponent implements OnInit {
     //   this.threeScene.setCameraOptions(this.cameraOptions);
     //   this.threeScene.setRendererOptions(this.rendererOptions);
     // });
+ 
 
-    window.addEventListener('mousedown', (e) => {
+    this.threeScene.getRenderer().domElement.addEventListener('mousedown', (e) => {
       this.previousMouseX = e.clientX;
       this.previousMouseY = e.clientY;
     });
 
-    window.addEventListener('mousemove', (e) => {
+    this.threeScene.getRenderer().domElement.addEventListener('mousemove', (e) => {
       if (this.previousMouseX + this.previousMouseY > 0) {
         if (e.clientX > this.previousMouseX) {
-          this.cubeGroupAll.rotateY(0.05);
+          this.threeScene.rotateOnWorldAxisY(this.cubeGroupAll, 3);
         } else if (e.clientX < this.previousMouseX) {
-          this.cubeGroupAll.rotateY(-0.05);
+          this.threeScene.rotateOnWorldAxisY(this.cubeGroupAll, -3);
         }
         if (e.clientY > this.previousMouseY) {
-          this.cubeGroupAll.rotateX(0.05);
+          this.threeScene.rotateOnWorldAxisX(this.cubeGroupAll, 3);
         } else if (e.clientY < this.previousMouseY) {
-          this.cubeGroupAll.rotateX(-0.05);
+          this.threeScene.rotateOnWorldAxisX(this.cubeGroupAll, -3);
         }
         this.previousMouseX = e.clientX;
         this.previousMouseY = e.clientY;
       }
     });
 
-    window.addEventListener('mouseup', (e) => {
+    this.threeScene.getRenderer().domElement.addEventListener('mouseup', (e) => {
+      this.previousMouseX = this.previousMouseY = 0;
+    });
+
+    this.threeScene.getRenderer().domElement.addEventListener('mouseout', (e) => {
       this.previousMouseX = this.previousMouseY = 0;
     });
 
     window.addEventListener('keypress', (e) => {
-
+      if(this.threeScene.isAnimating()) {
+        console.log('animating')
+        return;
+      }
       if (e.key == 's')
-        this.threeScene.rotateOnWorldAxisX(this.cubeGroupAll, 90, 1.5, true);
+        this.threeScene.rotateOnWorldAxisX(this.cubeGroupAll, 90, 1.5, false);
 
       if (e.key == 'w')
-        this.threeScene.rotateOnWorldAxisX(this.cubeGroupAll, -90, 1.5, true);
+        this.threeScene.rotateOnWorldAxisX(this.cubeGroupAll, -90, 1.5, false);
 
       if (e.key == 'a')
-        this.threeScene.rotateOnWorldAxisY(this.cubeGroupAll, -90, 1.5, true);
+        this.threeScene.rotateOnWorldAxisY(this.cubeGroupAll, -90, 1.5, false);
 
       if (e.key == 'd')
-        this.threeScene.rotateOnWorldAxisY(this.cubeGroupAll, 90, 1.5, true);
+        this.threeScene.rotateOnWorldAxisY(this.cubeGroupAll, 90, 1.5, false);
 
       if (e.key == 'z')
         this.threeScene.rotateToDefault(this.cubeGroupAll, 0.25);
 
       if (e.key == 'f') {
-        this.rotateColorCubes(-10.00, 0, 0, 90);
+        this.rotateSlice(Constants.ZSLICE_FRONT, true);
       }
-
-      if (e.key == 'g') {
-        this.rotateColor('White');
+      if (e.key == 'F') {
+        this.rotateSlice(Constants.ZSLICE_FRONT, false);
       }
-
-      if (e.key == 'h') {
-        this.rotateColor('Green');
+      if (e.key == 'b') {
+        this.rotateSlice(Constants.ZSLICE_BACK, true);
       }
-    });
-  }
-  rotateColor(color: string) {
-    let currentRot = this.cubeGroupAll.rotation.toVector3();
-    this.cubeGroupAll.rotation.set(0, 0, 0);
-    this.cubeGroupAll.updateMatrixWorld(true);
-
-    let colorCube = this.cubeGroupAll.getObjectByName(color);
-    let colorPos = this.threeScene.getWorldCoords(colorCube).round();
-
-    let group = new THREE.Object3D();
-    group.name = 'slice';
-    this.cubeGroupAll.children.forEach(c => {
-      let childPos = this.threeScene.getWorldCoords(c).round();
-      if (colorPos.x != 0 && childPos.x == colorPos.x) {
-        //c.position.set(c.position.x, c.position.y + 60, c.position.z);
-        let rotation = THREE.Math.degToRad(45);
-        this.setWorldRotationX(c, rotation);
+      if (e.key == 'B') {
+        this.rotateSlice(Constants.ZSLICE_BACK, false);
       }
-      else if (colorPos.y != 0 && childPos.y == colorPos.y) {
-        //c.position.set(c.position.x, c.position.y + 60, c.position.z);
-
-        let rotation = THREE.Math.degToRad(45);
-        console.log(childPos)
-        this.setWorldRotationY(c, rotation);
-      } else {
-
+      if (e.key == 'l') {
+        this.rotateSlice(Constants.XSLICE_LEFT, true);
       }
-
-    });
-  }
-
-  rotateColorCubes(xTarget: number,
-    yTarget: number,
-    zTarget: number,
-    radians: number) {
-
-    xTarget = xTarget == 0 ? undefined : xTarget;
-    yTarget = yTarget == 0 ? undefined : yTarget;
-    zTarget = zTarget == 0 ? undefined : zTarget;
-
-    let currentRot = this.cubeGroupAll.rotation.toVector3();
-    this.cubeGroupAll.rotation.set(0, 0, 0);
-    this.cubeGroupAll.updateMatrixWorld(true);
-
-    let cubes: ColorCube[] = new Array<ColorCube>();
-    let group: THREE.Object3D = new THREE.Object3D();
-
-    for (let i = this.cubeGroupAll.children.length - 1; i >= 0; i--) {
-      let cClone: ColorCube = this.cubeGroupAll.children[i].clone(true) as ColorCube;
-      let colorPos = this.threeScene.getWorldCoords(cClone).round();
-      if (colorPos.x == xTarget || colorPos.y == yTarget || colorPos.z == zTarget) {
-        group.add(cClone);
-        this.cubeGroupAll.remove(this.cubeGroupAll.children[i]);
+      if (e.key == 'L') {
+        this.rotateSlice(Constants.XSLICE_LEFT, false);
       }
-    }
-    this.cubeGroupAll.add(group);
-    this.cubeGroupAll.rotation.setFromVector3(currentRot);
-    this.threeScene.rotateOnWorldAxisX(group, radians, 3, true, () => {
-
-      let currentRot = this.cubeGroupAll.rotation.toVector3();
-      this.cubeGroupAll.rotation.set(0, 0, 0);
-    
-      for (let i = group.children.length - 1; i >= 0; i--) {
-        let cClone = group.children[i].clone(true) as ColorCube;
-        group.remove(group.children[i]);
-        let colorPos = this.threeScene.getWorldCoords(cClone).round();
-        let newCube: ColorCube = new ColorCube(
-          new THREE.CubeGeometry(this.cubeSize, this.cubeSize, this.cubeSize),
-          this.defaultMaterials);
-        
-        newCube.rotateMesh(cClone as ColorCube, this.cubeSize, xTarget, yTarget, zTarget, radians);
-        newCube.position.set(colorPos.x, colorPos.y, colorPos.z);
-        
-        this.cubeGroupAll.add(newCube);
+      if (e.key == 'r') {
+        this.rotateSlice(Constants.XSLICE_RIGHT, true);
       }
-      this.cubeGroupAll.remove(group);
-    });
-  }
-
-
-  setWorldRotationX(object: THREE.Object3D, radians: number) {
-    let cObject = object.clone(true);
-    let m = object.matrix.toArray();
-    let rotationMatrix = [
-      1.0, 0.0, 0.0, 0.0,
-      0.0, Math.cos(radians), -Math.sin(radians), 0.0,
-      0.0, Math.sin(radians), Math.cos(radians), 0.0,
-      0.0, 0.0, 0.0, 0.0
-    ];
-    let rotationMatrix4 = new THREE.Matrix4().fromArray(rotationMatrix);
-    let rot = cObject.matrix.premultiply(rotationMatrix4);
-    cObject.applyMatrix(rot);
-    let wPos = this.threeScene.getWorldCoords(cObject).round();
-    object.position.set(wPos.x, wPos.y, wPos.z);
-    this.threeScene.rotateOnWorldAxisX(object, 270, 5, true);
-    //object.rotateX(1.57);
-    //object.updateMatrixWorld(true);
-    //console.log(object.position);
-  }
-
-  setWorldRotationY(object: THREE.Object3D, radians: number) {
-    let cObject = object.clone(true);
-    let m = object.matrix.toArray();
-    let rotationMatrix = [
-      Math.cos(radians), 0.0, Math.sin(radians), 0.0,
-      0.0, 1.0, 0.0, 0.0,
-      -Math.sin(radians), 0.0, Math.cos(radians), 0.0,
-      0.0, 0.0, 0.0, 0.0
-    ];
-    let rotationMatrix4 = new THREE.Matrix4().fromArray(rotationMatrix);
-    let rot = cObject.matrix.premultiply(rotationMatrix4);
-    cObject.applyMatrix(rot);
-    let wPos = this.threeScene.getWorldCoords(cObject).round();
-
-    object.rotateY(3.14);
-    object.position.set(wPos.x, wPos.y, wPos.z);
-  }
-
-  setWorldRotationZ(object: THREE.Object3D, radians: number) {
-    let m = object.matrix.toArray();
-    let rotationMatrix = [
-      1.0, 0.0, 0.0, 0.0,
-      0.0, Math.cos(radians), -Math.sin(radians), 0.0,
-      0.0, Math.sin(radians), Math.cos(radians), 0.0,
-      0.0, 0.0, 0.0, 0.0
-    ];
-    let rotationMatrix4 = new THREE.Matrix4().fromArray(rotationMatrix);
-    let rot = object.matrix.premultiply(rotationMatrix4);
-    object.applyMatrix(rot);
-  }
-
-  trotateColor(color: string) {
-    let currentRot = this.cubeGroupAll.rotation.toVector3();
-    this.cubeGroupAll.rotation.set(0, 0, 0);
-    this.cubeGroupAll.updateMatrixWorld(true);
-    let cubeGroupClone = this.cubeGroupAll.clone(true);
-
-    this.threeScene.removeFromScene(this.cubeGroupAll);
-    let colorCube = cubeGroupClone.getObjectByName(color);
-    let colorPos = this.threeScene.getWorldCoords(colorCube).round();
-
-    let group = new THREE.Object3D();
-    group.name = 'slice';
-
-    cubeGroupClone.children.forEach(c => {
-      if (c.name == 'slice') {
-        c.children.forEach(s => {
-          let childPos = this.threeScene.getWorldCoords(s).round();
-          let cClone = s.clone(true);
-          if (colorPos.x != 0 && childPos.x == colorPos.x) {
-            group.add(cClone);
-          } else if (colorPos.y != 0 && childPos.y == colorPos.y) {
-            group.add(cClone);
-          } else if (colorPos.z != 0 && childPos.z == colorPos.z) {
-            group.add(cClone);
-          } else {
-            this.cubeGroupAll.add(cClone);
-          }
-        });
-      } else {
-        let childPos = this.threeScene.getWorldCoords(c).round();
-        let cClone = c.clone(true);
-        if (colorPos.x != 0 && childPos.x == colorPos.x) {
-          group.add(cClone);
-        } else if (colorPos.y != 0 && childPos.y == colorPos.y) {
-          group.add(cClone);
-        } else if (colorPos.z != 0 && childPos.z == colorPos.z) {
-          group.add(cClone);
-        } else {
-          this.cubeGroupAll.add(cClone);
-        }
+      if (e.key == 'R') {
+        this.rotateSlice(Constants.XSLICE_RIGHT, false);
+      }
+      if (e.key == 't') {
+        this.rotateSlice(Constants.YSLICE_TOP, true);
+      }
+      if (e.key == 'T') {
+        this.rotateSlice(Constants.YSLICE_TOP, false);
+      }
+      if (e.key == 'x') {
+        this.rotateSlice(Constants.YSLICE_BOTTOM, true);
+      }
+      if (e.key == 'X') {
+        this.rotateSlice(Constants.YSLICE_BOTTOM, false);
       }
     });
-    this.cubeGroupAll.add(group);
-    this.threeScene.addToScene(this.cubeGroupAll);
-
-    let rotationAxis = new THREE.Vector3(colorPos.x != 0 ? 1 : 0, colorPos.y != 0 ? 1 : 0, colorPos.z != 0 ? 1 : 0);
-    group.position.set(90, 0, 0);
-    group.rotateOnAxis(rotationAxis, 1.57);
-    group.updateMatrixWorld(true);
-
-    //this.threeScene.rotateOnWorldAxisX(colorCube, 90, 5, true);
-    this.cubeGroupAll.rotation.setFromVector3(currentRot);
-  }
+  }  
 }

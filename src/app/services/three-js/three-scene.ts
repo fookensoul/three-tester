@@ -4,7 +4,9 @@ import { ThreeModelFactory } from '../three-js/three-model-factory';
 import * as THREE from 'three';
 import { CameraOptions } from '../../models/three-js/camera-options';
 import { RendererOptions } from '../../models/three-js/renderer-options';
-import { ColorCube } from '../../models/three-js/color-cube';
+import ColorCube from '../../models/three-js/color-cube';
+import ColorCubeComponent from '../../models/three-js/color-cube-component';
+import Stats from 'stats-js';
 import * as _ from 'lodash';
 
 @Injectable()
@@ -16,10 +18,12 @@ export class ThreeScene {
   private renderer: THREE.WebGLRenderer;
   private camera: THREE.PerspectiveCamera;
   private scene: THREE.Scene;
+  private stats: Stats;
   private cameraOptions: CameraOptions;
   private rendererOptions: RendererOptions;
   private animationRef;
   private clientFunction: Function;
+  private animating: boolean;
 
   public axisX = new THREE.Vector3(1, 0, 0).normalize();
   public axisY = new THREE.Vector3(0, 1, 0).normalize();
@@ -31,6 +35,7 @@ export class ThreeScene {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera();
     this.renderer = new THREE.WebGLRenderer();
+    this.stats = new Stats();
     let light = new THREE.AmbientLight(0xffffff, 0.75);
 
     this.renderQueue = [{}];
@@ -40,6 +45,16 @@ export class ThreeScene {
     var axisHelper = new THREE.AxisHelper();
     this.scene.add(axisHelper);
     this.subscribeModelFactories();
+
+    this.stats.setMode(0); // 0: fps, 1: ms 
+    
+   // Align top-left 
+   this.stats.domElement.style.position = 'absolute';
+   this.stats.domElement.style.left = '0px';
+   this.stats.domElement.style.top = '0px';
+    
+   document.body.appendChild( this.stats.domElement );
+
   }
 
   public subscribeModelFactories() {
@@ -55,18 +70,16 @@ export class ThreeScene {
     this.scene.updateMatrixWorld(true);
   }
 
-
   public addToScene(object: THREE.Object3D) {
     this.scene.add(object);
+    this.camera.updateProjectionMatrix();
   }
 
   public removeFromScene(object: THREE.Object3D) {
-    cancelAnimationFrame(this.animationRef);
     this.scene.remove(object);
     for(let i = object.children.length - 1; i >=0; i--) {
       object.remove(object.children[i]);
     }
-    this.render(this.clientFunction);
   }
 
   public removeFromSceneByName(objectName: string) {
@@ -77,7 +90,6 @@ export class ThreeScene {
   public getRenderer() {
     return _.cloneDeep(this.renderer);
   }
-
  
   public getSceneObjectByName(objectName: string) {
     return this.scene.getObjectByName(objectName);
@@ -108,6 +120,10 @@ export class ThreeScene {
 
     this.camera.updateProjectionMatrix();
     this.threeModelFactory.setRendererOptions(options);
+  }
+
+  public isAnimating(): boolean {
+    return this.animating;
   }
 
   public getWorldCoords(object: THREE.Object3D): THREE.Vector3 {
@@ -192,12 +208,13 @@ export class ThreeScene {
   }
 
   animate(clientFunc?: Function) {
+    this.stats.begin();
     if(clientFunc)
       clientFunc();
     //queued async
     for (let x = 0; x < this.renderQueue.length; x++) {
       if (!this.renderQueue[x].finished) {
-
+        this.animating = true;
         if (this.renderQueue[x].currentFrame < this.renderQueue[x].totalFrames) {
           if (this.renderQueue[x].currentFrame % 60 == 0) {
             //console.log('rendering async');
@@ -212,9 +229,11 @@ export class ThreeScene {
             this.renderQueue[x].callBack();
           }
           this.renderQueue[x].finished = true;
+          this.animating = false;
         }
       }
     }
+    this.stats.end();
   }
 
 
